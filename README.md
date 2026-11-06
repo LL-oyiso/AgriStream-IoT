@@ -5,7 +5,7 @@
 | **Module** | CLDV7112 |
 | **Practicum** | Building a real-time processing system (Agristream IoT) |
 | **Student number** | `<STUDENT_NUMBER>` (placeholder, replace before submitting) |
-| **Live URL** | `http://<STUDENT_NUMBER>.azurewebsites.net` (placeholder) |
+| **Live URL** | https://st10504517agistream-gfdmh0avf2cpcdax.southafricanorth-01.azurewebsites.net |
 | **Repository** | `<REPOSITORY_LINK>` (placeholder) |
 
 Agristream IoT monitors large commercial farms. Soil sensors send telemetry in surges, and drones upload
