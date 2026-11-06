@@ -1,0 +1,37 @@
+@model UsersViewModel
+@{
+    ViewData["Title"] = "Users";
+}
+<h1 class="h4 mb-3">Users and roles (Azure SQL: dbo.Users)</h1>
+
+@if (Model.Error is not null)
+{
+    <div class="alert alert-warning">@Model.Error</div>
+}
+
+<table class="table table-sm bg-white">
+    <thead><tr><th>Id</th><th>Username</th><th>Role</th><th>Created (UTC)</th><th>Change role</th></tr></thead>
+    <tbody>
+    @foreach (var user in Model.Users)
+    {
+        <tr>
+            <td>@user.UserId</td>
+            <td>@user.Username</td>
+            <td><span class="badge bg-secondary">@user.Role</span></td>
+            <td>@user.CreatedUtc.ToString("yyyy-MM-dd HH:mm")</td>
+            <td>
+                <form asp-action="SetRole" method="post" class="d-flex gap-2">
+                    <input type="hidden" name="userId" value="@user.UserId" />
+                    <select name="role" class="form-select form-select-sm w-auto">
+                        @foreach (var role in Roles.All)
+                        {
+                            <option value="@role" selected="@(role == user.Role)">@role</option>
+                        }
+                    </select>
+                    <button class="btn btn-sm btn-outline-success" type="submit">Save</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

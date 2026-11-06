@@ -1,0 +1,76 @@
+@model SimulatorViewModel
+@{
+    ViewData["Title"] = "Simulator";
+}
+<h1 class="h4 mb-3">Traffic simulator</h1>
+<p class="text-muted">Generates the sensor surges and drone-image bursts described in the brief. The same actions are available as JSON endpoints for <code>scripts/load-test.ps1</code>.</p>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Sensor telemetry surge (writes to Azure Table storage)</div>
+            <div class="card-body">
+                <form asp-action="Telemetry" method="post">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Field</label>
+                            <select name="fieldId" class="form-select">
+                                @foreach (var f in Model.Fields) { <option value="@f">@f</option> }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Sensors</label>
+                            <input name="sensors" type="number" value="100" min="1" max="500" class="form-control" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Readings each</label>
+                            <input name="readingsPerSensor" type="number" value="20" min="1" max="200" class="form-control" />
+                        </div>
+                    </div>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" name="autoIrrigate" value="true" id="auto" />
+                        <label class="form-check-label" for="auto">Auto-trigger irrigation for dry (anomaly) readings</label>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label">Max irrigation commands</label>
+                        <input name="maxIrrigation" type="number" value="5" min="0" max="50" class="form-control w-auto" />
+                    </div>
+                    <button class="btn btn-success mt-3" type="submit">Run surge</button>
+                </form>
+                @if (Model.LastSurge is { } s)
+                {
+                    <div class="alert alert-info mt-3 mb-0">
+                        Wrote <strong>@s.Readings</strong> readings in @s.Batches table transactions (@s.ElapsedMs ms).
+                        Anomalies: @s.Anomalies. Irrigation commands queued: @s.IrrigationQueued (failed: @s.IrrigationFailed).
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card h-100">
+            <div class="card-header">Drone image burst (uploads to Azure Blob storage)</div>
+            <div class="card-body">
+                <form asp-action="Drones" method="post">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label">Field</label>
+                            <select name="fieldId" class="form-select">
+                                @foreach (var f in Model.Fields) { <option value="@f">@f</option> }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Images</label>
+                            <input name="count" type="number" value="25" min="1" max="200" class="form-control" />
+                        </div>
+                    </div>
+                    <button class="btn btn-success mt-3" type="submit">Upload burst</button>
+                </form>
+                @if (Model.LastBurst is { } b)
+                {
+                    <div class="alert alert-info mt-3 mb-0">Uploaded <strong>@b.Uploaded</strong> images in @b.ElapsedMs ms. Check the Evidence page for the audit rows.</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>

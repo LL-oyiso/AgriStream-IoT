@@ -1,0 +1,308 @@
+﻿<html><head><meta charset="utf-8"/><title>Practicum step-by-step guide</title><style>
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.25; }
+h1 { font-size: 18pt; color: #1F3864; margin-top: 20pt; }
+h2 { font-size: 14pt; color: #2F5496; margin-top: 14pt; }
+h3 { font-size: 12pt; color: #2F5496; margin-top: 10pt; }
+p.MsoCaption { font-size: 9pt; font-style: italic; color: #44546A; margin-top: 2pt; margin-bottom: 10pt; }
+p.shoty { margin-top: 8pt; margin-bottom: 0pt; }
+p.shotg { background: #E2EFDA; border: 1px solid #70AD47; padding: 6pt; margin-top: 8pt; margin-bottom: 8pt; }
+p.warn  { background: #FDE9E7; border: 1px solid #C00000; padding: 6pt; }
+p.tip   { background: #DEEAF6; border: 1px solid #2E75B6; padding: 6pt; }
+p.fix   { background: #FFF2CC; border: 1px solid #BF9000; padding: 6pt; }
+table.grid { border-collapse: collapse; width: 100%; }
+table.grid td, table.grid th { border: 1px solid #999; padding: 3pt; font-size: 9.5pt; vertical-align: top; }
+table.grid th { background: #D9E2F3; text-align: left; }
+span.fill { background: yellow; }
+pre, code { font-family: Consolas, 'Courier New', monospace; font-size: 9pt; }
+pre { background: #F2F2F2; border: 1px solid #BBB; padding: 4pt; }
+</style></head><body><h1>CLDV7112 Practicum: Step-by-step portal guide</h1>
+<p>This guide takes you from an empty resource group to a deployed, tested and screenshotted Agristream system. Do the steps in order. Every green box is a screenshot you must take at that moment, and the number matches the figure number in your submission document. The master checklist is at the end.</p>
+
+<h1>0. Golden rules</h1>
+<p class="warn"><b>Read these first.</b><br/>
+1. Use the resource group your institution gave you. Never create or delete a resource group.<br/>
+2. Region: South Africa North for everything.<br/>
+3. Operating system: Windows for both the Web App and the Function App.<br/>
+4. Application Insights: turn it <b>Off</b> or choose No whenever the wizard offers it (it is not available on this subscription and the wizard will fail).<br/>
+5. App Service plan: Basic B1 only. Standard and above are blocked by policy.<br/>
+6. Name everything with your student number so it is unique and the web address is correct.<br/>
+7. Secrets (passwords, connection strings, keys) live only in Notepad and in the portal app settings. Never in a screenshot, in the code or in git. When you screenshot app settings, leave the values hidden.</p>
+
+<h1>1. How the system fits together</h1>
+<p>The browser talks to the MVC Web App. The Web App stores users in Azure SQL, stores images in Blob storage and calls two HTTP functions in the Function App for telemetry (GET) and irrigation (POST). The POST function drops a message on the storage queue. The queue function reads the message and updates the device in Azure SQL. The blob function fires when an image arrives and writes an audit row to Table storage. The Web App and the Function App share one Basic B1 plan and one storage account.</p>
+
+<h1>2. What this subscription allows</h1>
+<p><b>Available:</b> Microsoft.Web (App Service, Functions), Microsoft.Storage, Microsoft.Sql.<br/>
+<b>Not available:</b> Microsoft.Insights (Application Insights, autoscale rules, alerts), Azure Load Testing, Standard or higher App Service plans. Section 10 shows how to attempt these on purpose so you have refusal screenshots.</p>
+
+<h1>3. Names and your Notepad</h1>
+<p>Open Notepad now and keep these lines. Replace <i>sn</i> with your student number in lowercase.</p>
+<table class="grid">
+<tr><th>Resource</th><th>Name to use</th></tr>
+<tr><td>App Service plan</td><td>plan-agristream-<i>sn</i></td></tr>
+<tr><td>Web App</td><td><i>sn</i> (gives https://<i>sn</i>.azurewebsites.net)</td></tr>
+<tr><td>Function App</td><td>func-agristream-<i>sn</i></td></tr>
+<tr><td>Storage account</td><td>stagristream<i>sn</i> (lowercase letters and digits only, 3 to 24 characters)</td></tr>
+<tr><td>SQL server</td><td>sql-agristream-<i>sn</i></td></tr>
+<tr><td>SQL database</td><td>agristream-db</td></tr>
+</table>
+<p>In Notepad also keep: SQL admin login, SQL admin password, storage connection string, function key, SimulatorKey and SeedAdminPassword (you choose those last two, long and random). Do not paste any of them into chat or into the project.</p>
+
+<h1>Step 1. Open and build the solution</h1>
+<p>1. Open <b>Agristream\Agristream.slnx</b> in Visual Studio 2022 (17.14 or later with the .NET 10 SDK).<br/>
+2. If Visual Studio asks, choose <b>Reload</b>. Then right-click the solution, <b>Restore NuGet Packages</b>, then <b>Rebuild Solution</b>.<br/>
+3. Expected result: 0 errors. If you see an error, copy the message and ask me.</p>
+<p class="fix"><b>Fix it:</b> if the build complains about path length, the solution is in OneDrive. Each project already redirects bin and obj to your local app data folder, so rebuild once more. If it still fails, copy the Agristream folder to C:\dev and open it from there.</p>
+
+<h1>Step 2. Storage account (section C)</h1>
+<p>Portal, <b>Create a resource</b>, Storage account, Create.</p>
+<table class="grid">
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Resource group</td><td>your institution group</td></tr>
+<tr><td>Storage account name</td><td>stagristream<i>sn</i></td></tr>
+<tr><td>Region</td><td>South Africa North</td></tr>
+<tr><td>Primary workload</td><td><b>General purpose</b> (last option, under "Other"; scroll down in the list). Do not choose AI Agent inferencing, Big Data Analytics or Backup and archive.</td></tr>
+<tr><td>Performance</td><td>Standard</td></tr>
+<tr><td>Redundancy</td><td>Locally-redundant storage (LRS)</td></tr>
+</table>
+<p>Leave everything else on default, then Review + create, Create.</p>
+<p>1. When it finishes, open the account. Under <b>Data storage, Containers</b>, click <b>+ Container</b>, name it <b>drone-images</b>, access level Private, Create. The Table and queue are created automatically by the app.<br/>
+2. Under <b>Security + networking, Access keys</b>, click Show on key1's <b>Connection string</b> and copy it to Notepad as StorageConnectionString. Do not screenshot this page.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 15</b> <span style="color:#555">[storage-overview]</span><br/>Capture: Storage account, Overview, showing Standard performance, Locally-redundant storage (LRS) and South Africa North</p>
+<p class="shotg"><b>SCREENSHOT - Figure 16</b> <span style="color:#555">[blob-container]</span><br/>Capture: Storage account, Data storage, Containers, drone-images, showing the uploaded images</p>
+
+<h1>Step 3. Azure SQL (section B)</h1>
+<p>Create a resource, <b>SQL Database</b>, Create.</p>
+<table class="grid">
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Resource group</td><td>your institution group</td></tr>
+<tr><td>Database name</td><td>agristream-db</td></tr>
+<tr><td>Server</td><td>Create new: sql-agristream-<i>sn</i>, South Africa North</td></tr>
+<tr><td>Authentication method</td><td>Use SQL authentication, choose an admin login and a strong password (Notepad)</td></tr>
+<tr><td>Want to use SQL elastic pool</td><td>No</td></tr>
+<tr><td>Workload environment</td><td>Development</td></tr>
+<tr><td>Compute + storage</td><td>Configure database, Service tier: Basic (5 DTU, 2 GB). If you see only vCore, choose Basic from the service tier dropdown.</td></tr>
+<tr><td>Backup storage redundancy</td><td>Locally-redundant</td></tr>
+<tr><td>Networking, Connectivity</td><td>Public endpoint; Allow Azure services and resources to access this server: Yes; Add current client IP address: Yes</td></tr>
+</table>
+<p>Review + create, Create.</p>
+<p>1. Open the SQL server, <b>Security, Networking</b>. Confirm both the "Allow Azure services" box and your client IP rule exist.<br/>
+2. Open the database, <b>Query editor (preview)</b>, sign in with the SQL admin login.<br/>
+3. Open <b>Agristream\sql\create-tables.sql</b> in Visual Studio. Copy everything under <b>PART 1</b> only into the Query editor and click Run. Refresh the Tables list.<br/>
+4. Build the connection string in Notepad as SqlConnectionString using the server name and the database, in this form (replace the uppercase words, include your real password only in Notepad):</p>
+<pre>Server=tcp:SERVER.database.windows.net,1433;Initial Catalog=agristream-db;User ID=ADMIN_LOGIN;Password=YOUR_PASSWORD;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;</pre>
+<p class="shotg"><b>SCREENSHOT - Figure 8</b> <span style="color:#555">[sql-overview]</span><br/>Capture: SQL database, Overview, showing the server name, status Online and the pricing tier Basic</p>
+<p class="shotg"><b>SCREENSHOT - Figure 9</b> <span style="color:#555">[sql-firewall]</span><br/>Capture: SQL server, Security, Networking, showing Allow Azure services and resources to access this server ticked and your client IP rule</p>
+<p class="shotg"><b>SCREENSHOT - Figure 10</b> <span style="color:#555">[sql-tables]</span><br/>Capture: SQL database, Query editor, after running PART 1 of create-tables.sql, with the Tables list showing dbo.Users, dbo.Devices and dbo.IrrigationCommandLog</p>
+<p class="fix"><b>Fix it:</b> if the Query editor says your IP is blocked, click the link in the message to add your IP, or add it under Networking. If Run fails with "already exists", the script has already run; carry on.</p>
+
+<h1>Step 4. Web App and App Service plan (section A)</h1>
+<p>Create a resource, <b>Web App</b>, Create.</p>
+<table class="grid">
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Resource group</td><td>your institution group</td></tr>
+<tr><td>Name</td><td><i>sn</i> (this is the web address)</td></tr>
+<tr><td>Publish</td><td>Code</td></tr>
+<tr><td>Runtime stack</td><td>.NET 10 (LTS)</td></tr>
+<tr><td>Operating System</td><td>Windows</td></tr>
+<tr><td>Region</td><td>South Africa North</td></tr>
+<tr><td>Windows Plan</td><td>Create new: plan-agristream-<i>sn</i></td></tr>
+<tr><td>Pricing plan</td><td>Basic B1 (open "Explore pricing plans" and choose Basic B1)</td></tr>
+</table>
+<p>On the <b>Monitor + secure</b> tab set Application Insights to <b>No</b>. Review + create, Create.</p>
+<p class="fix"><b>Fix it:</b> if .NET 10 is not in the runtime list, pick the newest .NET shown and tell me. Retargeting the projects is a one-line change in each .csproj and the plan has no issue with it.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 6</b> <span style="color:#555">[webapp-overview]</span><br/>Capture: Web App, Overview, showing Status Running, the default domain and the App Service plan name</p>
+<p class="shotg"><b>SCREENSHOT - Figure 7</b> <span style="color:#555">[plan-overview]</span><br/>Capture: App Service plan, Overview, showing Basic B1, South Africa North and both apps (Web App and Function App) in the plan</p>
+<p class="shotg"><b>SCREENSHOT - Figure 1</b> <span style="color:#555">[rg]</span><br/>Capture: Azure Portal, your resource group, Overview, showing every Agristream resource (App Service plan, Web App, Function App, storage account, SQL server and database)</p>
+
+<h1>Step 5. Function App on the same plan</h1>
+<p>Create a resource, <b>Function App</b>, choose the <b>App Service</b> hosting option (not Consumption, not Flex, not Premium), Select.</p>
+<table class="grid">
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Resource group</td><td>your institution group</td></tr>
+<tr><td>Function App name</td><td>func-agristream-<i>sn</i></td></tr>
+<tr><td>Runtime stack</td><td>.NET (isolated worker model), version .NET 10 (LTS)</td></tr>
+<tr><td>Operating System</td><td>Windows</td></tr>
+<tr><td>Region</td><td>South Africa North</td></tr>
+<tr><td>Windows Plan</td><td>Select existing: plan-agristream-<i>sn</i></td></tr>
+<tr><td>Storage tab, Storage account</td><td>stagristream<i>sn</i> (the same one you created)</td></tr>
+<tr><td>Monitoring, Application Insights</td><td>No</td></tr>
+</table>
+<p>Review + create, Create.</p>
+<p>Then open the Function App and set:<br/>
+1. <b>Settings, Configuration (or Environment variables), General settings</b>: <b>Always on = On</b> and <b>Platform = 64 Bit</b>. Save. Without Always On the blob and queue triggers stop when the app goes idle.<br/>
+2. <b>Environment variables, App settings, + Add</b>: name <b>SqlConnectionString</b>, value from Notepad. On the <b>App settings</b> tab (not Connection strings), confirm <b>AzureWebJobsStorage</b> and <b>FUNCTIONS_WORKER_RUNTIME</b> (dotnet-isolated) already exist. Apply, Confirm.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 2</b> <span style="color:#555">[func-overview]</span><br/>Capture: Function App, Overview, showing Status Running, the default domain, the App Service plan and the Windows operating system</p>
+<p class="shotg"><b>SCREENSHOT - Figure 5</b> <span style="color:#555">[appsettings-func]</span><br/>Capture: Function App, Settings, Environment variables, showing AzureWebJobsStorage, SqlConnectionString and FUNCTIONS_WORKER_RUNTIME names with values hidden</p>
+<p class="warn">Do not click "Show values" before taking the screenshot. The values stay hidden.</p>
+
+<h1>Step 6. Publish the functions</h1>
+<p>1. In Visual Studio right-click <b>Agristream.Functions</b>, <b>Publish</b>, Add a publish profile, Target <b>Azure</b>, Specific target <b>Azure Function App (Windows)</b>, sign in, pick func-agristream-<i>sn</i>, Finish.<br/>
+2. If it asks about deployment type choose Publish (zip deploy). Click <b>Publish</b>.<br/>
+3. In the portal, Function App, <b>Overview, Functions</b> tab: you must see four functions (GetLatestTelemetry, ProcessDroneImage, ProcessIrrigationCommand, QueueIrrigationCommand).<br/>
+4. Open <b>Functions, App keys</b> (in the left menu, above Settings; the keys only appear after the first publish has started), find the <b>default</b> host key under Host keys, and copy it into Notepad as FunctionKey. Copy the <b>Default domain</b> from the Function App <b>Overview</b> page and put https:// in front of it. This is FunctionBaseUrl, with no trailing slash and no /api. New apps get a long unique host name (for example func-agristream-sn-xxxxxxxx.southafricanorth-01.azurewebsites.net), so do not guess it.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 19</b> <span style="color:#555">[func-list]</span><br/>Capture: Function App, Overview, Functions tab, showing exactly four functions all Enabled: ProcessDroneImage, GetLatestTelemetry, QueueIrrigationCommand, ProcessIrrigationCommand</p>
+<p class="fix"><b>Fix it:</b> if the Functions list is empty, wait one minute and refresh, then check Always On, 64-bit, and that FUNCTIONS_WORKER_RUNTIME is dotnet-isolated. Open <b>Log stream</b> to see the startup error. If it says it cannot reach storage, check AzureWebJobsStorage is set.</p>
+
+<h1>Step 7. Web App settings and publish</h1>
+<p>In the Web App, <b>Settings, Environment variables, App settings</b>, add these six (name exactly as shown):</p>
+<table class="grid">
+<tr><th>Name</th><th>Value</th></tr>
+<tr><td>SqlConnectionString</td><td>from Notepad</td></tr>
+<tr><td>StorageConnectionString</td><td>the storage connection string from Step 2 (the same value as the function app's AzureWebJobsStorage)</td></tr>
+<tr><td>FunctionBaseUrl</td><td>https://<b>Default domain</b> copied from the Function App Overview page (long unique host name; no trailing slash, no /api)</td></tr>
+<tr><td>FunctionKey</td><td>the default host key from Step 6</td></tr>
+<tr><td>SimulatorKey</td><td>a long random value you invent (Notepad)</td></tr>
+<tr><td>SeedAdminPassword</td><td>a strong password you invent for the user <b>admin</b> (Notepad)</td></tr>
+</table>
+<p>Apply, Confirm. Then in Visual Studio right-click <b>Agristream.Web</b>, Publish, Azure, <b>Azure App Service (Windows)</b>, pick your Web App, Publish. The browser opens on the live site.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 4</b> <span style="color:#555">[appsettings-web]</span><br/>Capture: Web App, Settings, Environment variables, App settings tab with the NAMES visible and the values hidden (do not click Show values)</p>
+<p class="shotg"><b>SCREENSHOT - Figure 3</b> <span style="color:#555">[live-url]</span><br/>Capture: Browser showing the live home page with the full URL visible in the address bar (https://&lt;studentnumber&gt;.azurewebsites.net)</p>
+<p class="fix"><b>Fix it:</b> if the home page shows a yellow warning about missing settings, the names are wrong or you forgot to click Apply. If you see HTTP 500.30, open the Web App <b>Log stream</b> and read the first red line.</p>
+
+<h1>Step 8. Users and roles (section B evidence)</h1>
+<p>1. In the live app click <b>Register</b>, choose a username, role <b>Farmer</b>, a password, Register. Take the screenshot before you click the button.<br/>
+2. Sign out and sign in with that user.<br/>
+3. Sign in as <b>admin</b> with your SeedAdminPassword. Open <b>Admin, Users</b> and set a role for your test user.<br/>
+4. In the portal Query editor run <b>query A</b> from PART 2 of create-tables.sql (it shortens the password hash, and you should never show a full hash). You can also run <b>SELECT UserId, Username, Role, CreatedUtc FROM dbo.Users;</b>.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 11</b> <span style="color:#555">[register]</span><br/>Capture: The Register page in the live app with a username, the Farmer role and password fields filled in</p>
+<p class="shotg"><b>SCREENSHOT - Figure 12</b> <span style="color:#555">[login]</span><br/>Capture: The field dashboard after signing in, with the signed-in username and role shown at the top right</p>
+<p class="shotg"><b>SCREENSHOT - Figure 14</b> <span style="color:#555">[admin-users]</span><br/>Capture: The Admin Users page in the app showing the Farmer, Agronomist and Admin accounts with the role drop-down</p>
+<p class="shotg"><b>SCREENSHOT - Figure 13</b> <span style="color:#555">[sql-users]</span><br/>Capture: SQL Query editor running evidence query A (users and roles), showing the hash start only</p>
+
+<h1>Step 9. Blob, blob function and Table (sections C and D1)</h1>
+<p class="fix"><b>Function logs without Application Insights.</b> Do not click Configure on the portal Log stream page (it needs Application Insights). Instead: (a) republish the Function App once so the new <i>fileLoggingMode: always</i> line in host.json takes effect; (b) Function App, <b>Monitoring, App Service logs</b>: Application logging (Filesystem) On, level Information, Save; (c) open <b>https://func-agristream-SN.scm.azurewebsites.net/api/logstream/Application/Functions/</b> (replace SN, sign in with your Azure account) to watch the function log live. You can also open the Kudu Debug console and read <b>LogFiles\Application\Functions\Function.ProcessDroneImage.log</b>. The ImageAudit table row is your main evidence, so the log line is a bonus.</p><p>1. Open the log page from the note above in one browser tab (leave it open).<br/>
+2. In the live app, <b>Images</b>, upload any small picture (use a fake farm photo you have no privacy concern about), choose field-01.<br/>
+3. Watch the Log stream show the ProcessDroneImage line. Screenshot it.<br/>
+4. Portal, Storage account, <b>Storage browser, Tables, ImageAudit</b>: screenshot the new row.<br/>
+5. Back in the app, refresh the Images page: the status shows Processed.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 17</b> <span style="color:#555">[upload-page]</span><br/>Capture: The Drone images page after an upload, showing the success message and the image in the list with its audit status</p>
+<p class="shotg"><b>SCREENSHOT - Figure 20</b> <span style="color:#555">[logstream-blob]</span><br/>Capture: Function App, Monitoring, Log stream (or Kudu LogFiles\Application\Functions), showing the line &#39;Drone image received&#39; and &#39;Audit entry written&#39; for the uploaded image</p>
+<p class="shotg"><b>SCREENSHOT - Figure 21</b> <span style="color:#555">[table-audit]</span><br/>Capture: Storage browser, Tables, ImageAudit, with one row opened or visible, showing BlobName, Status Processed, SizeBytes and DetectionLagMs</p>
+<p class="shotg"><b>SCREENSHOT - Figure 22</b> <span style="color:#555">[upload-processed]</span><br/>Capture: The Drone images page after refreshing, showing the same image with the green Processed badge</p>
+
+<p class="fix"><b>Fix it: the image stays Pending.</b> The Web App and the Function App must use the <b>same storage account</b>. If the function log shows ContainerNotFound for drone-images, they point at different accounts. Easiest fix: copy the Function App's <b>AzureWebJobsStorage</b> value (Function App, Environment variables, show value, only for yourself) into the Web App's <b>StorageConnectionString</b>, Apply, then in that same storage account create the private container <b>drone-images</b>, and upload the image again. Do not change AzureWebJobsStorage on the Function App, because the function keys are stored in that account.</p>
+<h1>Step 10. HTTP GET and Table (sections C and D2)</h1>
+<p>1. Sign in as admin. Open <b>Simulator</b>, set Field field-01, <b>Sensors 20</b>, <b>Readings each 100</b> (= 2,000 readings in total; readings each is capped at 200), leave auto irrigation unticked, and click <b>Run surge</b>. Wait for the success message.<br/>
+2. Portal, Storage browser, Tables, <b>SensorReadings</b>: screenshot the rows (look at the PartitionKey like field-01_20261106).<br/>
+3. Open <b>Dashboard</b>, choose field-01. It shows the latest readings and the round trip time.<br/>
+4. In the browser address bar open the function directly, in a new tab, using your key (do not screenshot the key): <b>https://func-agristream-<i>sn</i>.azurewebsites.net/api/telemetry/field-01?limit=5&amp;code=YOUR_KEY</b>. Crop or blur the address bar for the screenshot.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 34</b> <span style="color:#555">[sim-surge]</span><br/>Capture: The Simulator page after running a sensor surge, showing the result box with readings written, table transactions and milliseconds</p>
+<p class="shotg"><b>SCREENSHOT - Figure 18</b> <span style="color:#555">[table-sensor]</span><br/>Capture: Storage account, Storage browser, Tables, SensorReadings, showing several entities with PartitionKey, RowKey and the moisture columns</p>
+<p class="shotg"><b>SCREENSHOT - Figure 23</b> <span style="color:#555">[dash-telemetry]</span><br/>Capture: The field dashboard showing the readings table, the anomaly rows highlighted and the function round-trip time</p>
+<p class="shotg"><b>SCREENSHOT - Figure 24</b> <span style="color:#555">[get-json]</span><br/>Capture: Browser tab showing the GET function URL response as JSON (cover or crop out the ?code= key in the address bar)</p>
+
+<h1>Step 11. HTTP POST, queue and queue function (D3 and D4)</h1>
+<p>The queue message normally disappears in milliseconds because the queue function consumes it. To screenshot it, pause the consumer:</p>
+<p>1. Function App, <b>Overview, Functions</b>, click <b>ProcessIrrigationCommand</b>, then <b>Disable</b> (top bar). Confirm.<br/>
+2. Dashboard, pick a device that shows Idle, and note its status. Screenshot the dashboard (before).<br/>
+3. Click <b>Trigger irrigation</b> on that device. Screenshot the success message.<br/>
+4. Portal, Storage account, <b>Storage browser, Queues, irrigation-commands</b>: screenshot the waiting message.<br/>
+5. Return to the function, click <b>Enable</b>. Wait ten seconds.<br/>
+6. Refresh the dashboard: the device status has changed. Screenshot (after).<br/>
+7. SQL Query editor: <b>SELECT TOP 10 * FROM dbo.IrrigationCommandLog ORDER BY ProcessedUtc DESC;</b> (this is query E in PART 2). Screenshot.<br/>
+8. Storage browser, Tables, <b>IrrigationEvents</b>: screenshot. Then Function App, Log stream: screenshot the ProcessIrrigationCommand line.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 27a</b> <span style="color:#555">[dash-before]</span><br/>Capture: The dashboard device list showing the valve with status Idle just before the command is processed</p>
+<p class="shotg"><b>SCREENSHOT - Figure 25</b> <span style="color:#555">[dash-trigger]</span><br/>Capture: The dashboard immediately after clicking Trigger irrigation, showing the green message with the command id</p>
+<p class="shotg"><b>SCREENSHOT - Figure 26</b> <span style="color:#555">[queue-message]</span><br/>Capture: Storage account, Queues, irrigation-commands, showing the queued message (disable the ProcessIrrigationCommand function first so the message stays visible, then re-enable it)</p>
+<p class="shotg"><b>SCREENSHOT - Figure 27b</b> <span style="color:#555">[dash-after]</span><br/>Capture: The dashboard device list after the queue function ran and the page was refreshed, showing the same valve Irrigating with the last command time</p>
+<p class="shotg"><b>SCREENSHOT - Figure 28</b> <span style="color:#555">[sql-commandlog]</span><br/>Capture: SQL Query editor running evidence query E (most recent commands), showing CommandId, DeviceId, Outcome, EnqueuedUtc, ProcessedUtc and LatencyMs</p>
+<p class="shotg"><b>SCREENSHOT - Figure 29</b> <span style="color:#555">[table-events]</span><br/>Capture: Storage browser, Tables, IrrigationEvents, showing the event row for the command</p>
+<p class="shotg"><b>SCREENSHOT - Figure 30</b> <span style="color:#555">[logstream-queue]</span><br/>Capture: Function App, Log stream (or Kudu logs), showing &#39;Command ... processed: start ... -&gt; Applied&#39;</p>
+<p class="tip"><b>Tip:</b> do the trigger in step 3 within a minute of disabling, then enable straight after the screenshot so you do not forget.</p>
+
+<h1>Step 12. Services you cannot use: show the attempts (blocked-service evidence)</h1>
+<p>The lecturer wants evidence of what you tried. Do each attempt up to the point where Azure refuses, screenshot the refusal, then cancel. Do not create anything.</p>
+<p><b>12a. Application Insights.</b> Create a resource, search <b>Application Insights</b>, Create, fill in a name and the resource group, click Review + create. Screenshot the error such as "The subscription is not registered to use namespace microsoft.insights" or the validation failure.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 31</b> <span style="color:#555">[attempt-insights]</span><br/>Capture: Function App or Web App, Settings, Application Insights (or Monitoring), after clicking Turn on / Create, showing the error about the resource provider or policy</p>
+<p><b>12b. Resource providers.</b> Portal, search <b>Subscriptions</b>, your subscription, <b>Settings, Resource providers</b>. Search "Insights" and then "LoadTestService". Screenshot the list showing Microsoft.Insights NotRegistered and no permission to register. Optionally click Register and screenshot the refusal.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 32</b> <span style="color:#555">[providers]</span><br/>Capture: Subscriptions, your subscription, Settings, Resource providers, with the search box showing Microsoft.Insights and Microsoft.LoadTestService as NotRegistered and Microsoft.Web, Microsoft.Storage and Microsoft.Sql as Registered</p>
+<p><b>12c. Azure Load Testing.</b> Create a resource, search <b>Azure Load Testing</b>, Create, fill in the form, Review + create. Screenshot the error.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 33</b> <span style="color:#555">[attempt-loadtest]</span><br/>Capture: Portal search for Azure Load Testing, Create, showing the registration or permission error</p>
+<p><b>12d. Autoscale rules and scale up.</b> These are in Step 16.</p>
+
+<h1>Step 13. Load test: baseline (section E)</h1>
+<p>Make sure the plan is on <b>1 instance</b> and <b>host.json is on the baseline values 16 and 8</b> (as published). Start with an empty queue and an empty IrrigationCommandLog table so the numbers are clean: in the Query editor run <b>query K</b> (DELETE FROM dbo.IrrigationCommandLog) and reset the device statuses if you want.</p>
+<p>1. Open PowerShell in the Agristream folder.<br/>
+2. Put the key in an environment variable for this window only:</p>
+<pre>$env:AGRISTREAM_SIM_KEY = Read-Host "SimulatorKey"</pre>
+<p>3. Run the baseline (about 3 minutes):</p>
+<pre>.\scripts\load-test.ps1 -StudentNumber YOUR_SN -Users 50 -DurationSeconds 120 -SensorBurst 5000 -ImageBurst 50 -Label baseline-1-instance</pre>
+<p>4. Immediately switch to the Evidence page (admin) and refresh while it runs. Screenshot at the peak backlog. Screenshot the final printed summary, and copy the numbers into Notepad (throughput, p50, p95, p99, failures, peak backlog, drain time).<br/>
+5. Also take the Simulator screenshots (a burst of images).</p>
+<p class="shotg"><b>SCREENSHOT - Figure 35</b> <span style="color:#555">[sim-burst]</span><br/>Capture: The Simulator page after running a drone image burst, showing the uploaded count and elapsed time</p>
+<p class="shotg"><b>SCREENSHOT - Figure 36</b> <span style="color:#555">[load-baseline]</span><br/>Capture: PowerShell window showing the RESULTS block of the baseline run at 1 instance (users, requests/s, p50/p95/p99, errors, peak backlog, drain time, requests per instance)</p>
+<p class="shotg"><b>SCREENSHOT - Figure 38</b> <span style="color:#555">[evidence-peak]</span><br/>Capture: The Evidence page captured during the load test showing the queue backlog, commands processed and per-minute throughput</p>
+<p class="fix"><b>Fix it:</b> if the script says 404, the SimulatorKey setting is empty or does not match. If many requests fail with 5xx, lower -Users to 30 and note it in the write-up. If PowerShell blocks the script run: <b>powershell -ExecutionPolicy Bypass -File .\scripts\load-test.ps1 ...</b></p>
+
+<h1>Step 14. Monitoring screenshots (section F)</h1>
+<p>Repeat a load run (or do these during Step 13 and Step 17) and capture, each with the time range set to the last 30 minutes:</p>
+<p>1. <b>App Service plan, Monitoring, Metrics</b>: add CPU Percentage (Max) and Memory Percentage. Screenshot.<br/>
+2. <b>Web App, Monitoring, Metrics</b>: Requests (Sum), Average Response Time. Screenshot.<br/>
+3. <b>Function App, Monitoring, Metrics</b>: Function Execution Count (Sum). Screenshot.<br/>
+4. <b>SQL database, Monitoring, Metrics</b>: DTU percentage (Max). Screenshot.<br/>
+5. SQL Query editor: run <b>query G</b> (throughput per minute) from PART 2 of create-tables.sql and screenshot the result.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 39</b> <span style="color:#555">[metrics-cpu]</span><br/>Capture: App Service plan, Monitoring, Metrics, CPU Percentage and Memory Percentage charts for the load-test period (and Instance count if available)</p>
+<p class="shotg"><b>SCREENSHOT - Figure 40</b> <span style="color:#555">[metrics-requests]</span><br/>Capture: Web App, Monitoring, Metrics, Requests and Response Time charts for the load-test period</p>
+<p class="shotg"><b>SCREENSHOT - Figure 41</b> <span style="color:#555">[metrics-func]</span><br/>Capture: Function App, Monitoring, Metrics, Function Execution Count (and Function Execution Units) for the load-test period</p>
+<p class="shotg"><b>SCREENSHOT - Figure 42</b> <span style="color:#555">[metrics-dtu]</span><br/>Capture: SQL database, Monitoring, Metrics, DTU percentage (or Workers percentage) for the load-test period</p>
+<p class="shotg"><b>SCREENSHOT - Figure 43</b> <span style="color:#555">[sql-throughput]</span><br/>Capture: SQL Query editor running evidence query G (commands processed per minute with latency)</p>
+<p class="tip"><b>Tip:</b> portal metrics lag a few minutes, so take these screenshots after the run finishes, with the chart range covering the run.</p>
+
+<h1>Step 15. Optimise: tune the queue trigger (section E)</h1>
+<p>1. Open <b>Agristream.Functions\host.json</b> and screenshot the baseline values (batchSize 16, newBatchThreshold 8).<br/>
+2. Change them to <b>batchSize 6</b> and <b>newBatchThreshold 3</b>. Screenshot again.<br/>
+3. Republish the Function App (Step 6).<br/>
+4. Rebuild confidence: each instance now runs at most 9 queue messages at once, so 3 instances run 27, below the 30 concurrent worker limit of Azure SQL Basic.<br/>
+5. If you saw errors in the baseline, screenshot where they appear (the load-test output or the SQL "resource limit" message). If you never saw the throttle, skip that figure, it is optional.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 50a</b> <span style="color:#555">[hostjson-before]</span><br/>Capture: Visual Studio showing host.json with the baseline queue settings (batchSize 16, newBatchThreshold 8)</p>
+<p class="shotg"><b>SCREENSHOT - Figure 50b</b> <span style="color:#555">[hostjson-after]</span><br/>Capture: Visual Studio showing host.json with the tuned settings (batchSize 6, newBatchThreshold 3)</p>
+<p class="shotg"><b>SCREENSHOT - Figure 51 (optional)</b> <span style="color:#555">[throttle]</span><br/>Capture: Function App Log stream or Kudu logs (or SQL error text) showing error 10928 or &#39;request limit&#39; during the baseline run at 3 instances, if it happened</p>
+
+<h1>Step 16. Scale out and the autoscale attempts (section G)</h1>
+<p>1. <b>App Service plan, Settings, Scale out (App Service plan)</b>. Screenshot the blade as it opens (Manual scale on Basic).<br/>
+2. Look for <b>Automatic</b> or <b>Rules based</b>. Click it. Screenshot the message saying it needs a higher tier or is unavailable.<br/>
+3. Try <b>Scale up (App Service plan)</b> and choose Standard S1. Screenshot the policy refusal or the greyed-out tier. This is optional if the blade only shows Basic.<br/>
+4. Back on Scale out, set <b>Instance count to 3</b>, Save. Wait until it says 3 instances.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 44</b> <span style="color:#555">[scale-blade]</span><br/>Capture: App Service plan, Settings, Scale out (App Service plan), showing what the Basic B1 plan offers (Manual scale only) and any prompt to upgrade for automatic or rule-based scaling</p>
+<p class="shotg"><b>SCREENSHOT - Figure 45</b> <span style="color:#555">[attempt-autoscale]</span><br/>Capture: Azure Monitor, Autoscale, selecting the App Service plan, showing the error or the missing option</p>
+<p class="shotg"><b>SCREENSHOT - Figure 46 (optional)</b> <span style="color:#555">[attempt-scaleup]</span><br/>Capture: App Service plan, Scale up, selecting Standard S1 and applying, showing the RequestDisallowedByPolicy error</p>
+<p class="shotg"><b>SCREENSHOT - Figure 47</b> <span style="color:#555">[scale-3]</span><br/>Capture: Scale out (App Service plan) with Manual scale and the instance count set to 3, saved, with the notification</p>
+
+<h1>Step 17. Optimised load test at three instances</h1>
+<p>1. Clear the command log again (DELETE FROM dbo.IrrigationCommandLog;).<br/>
+2. Run the same command with a new label:</p>
+<pre>.\scripts\load-test.ps1 -StudentNumber YOUR_SN -Users 50 -DurationSeconds 120 -SensorBurst 5000 -ImageBurst 50 -Label optimised-3-instances</pre>
+<p>3. Screenshot the summary. It prints how many requests each instance served (that is the instance split proof).<br/>
+4. Portal, App Service plan, Metrics, CPU Percentage, <b>Apply splitting by Instance</b>: screenshot (scale-cpu).<br/>
+5. Screenshot the instance split from the Evidence page or the summary (instance-split).<br/>
+6. After you finish, put the plan back to <b>1 instance</b> to save cost.</p>
+<p class="shotg"><b>SCREENSHOT - Figure 37</b> <span style="color:#555">[load-optimised]</span><br/>Capture: PowerShell window showing the RESULTS block of the final run at 3 instances with the tuned host.json</p>
+<p class="shotg"><b>SCREENSHOT - Figure 48</b> <span style="color:#555">[scale-cpu]</span><br/>Capture: App Service plan Metrics showing CPU Percentage split by instance (Add filter, Apply splitting, Instance) or the instance count rising from 1 to 3 across the runs</p>
+<p class="shotg"><b>SCREENSHOT - Figure 49</b> <span style="color:#555">[instance-split]</span><br/>Capture: PowerShell window showing the &#39;Requests per instance (X-Instance-Id)&#39; lines from a run at 3 instances</p>
+
+<h1>Step 18. Code screenshots</h1>
+<p>In Visual Studio take clean screenshots (light theme, line numbers on) of:</p>
+<p class="shotg"><b>SCREENSHOT - Figure 52</b> <span style="color:#555">[code-blob]</span><br/>Capture: Visual Studio showing ProcessDroneImageFunction.cs</p>
+<p class="shotg"><b>SCREENSHOT - Figure 53</b> <span style="color:#555">[code-get]</span><br/>Capture: Visual Studio showing GetLatestTelemetryFunction.cs</p>
+<p class="shotg"><b>SCREENSHOT - Figure 54</b> <span style="color:#555">[code-post]</span><br/>Capture: Visual Studio showing QueueIrrigationCommandFunction.cs including the IrrigationOutput class</p>
+<p class="shotg"><b>SCREENSHOT - Figure 55</b> <span style="color:#555">[code-queue]</span><br/>Capture: Visual Studio showing ProcessIrrigationCommandFunction.cs and the ApplyCommandAsync method in DeviceRegistry.cs</p>
+<p class="shotg"><b>SCREENSHOT - Figure 56</b> <span style="color:#555">[code-auth]</span><br/>Capture: Visual Studio showing Program.cs of the web project (cookie authentication and service registration) and PasswordHasher.cs</p>
+<p class="shotg"><b>SCREENSHOT - Figure 57</b> <span style="color:#555">[code-upload]</span><br/>Capture: Visual Studio showing ImageService.UploadAsync in ImageService.cs</p>
+
+<h1>Step 19. Finish the documents</h1>
+<p>1. Open the submission docx. Paste each screenshot over its yellow placeholder, then delete the yellow text.<br/>
+2. Replace every yellow bracket with your measured numbers (Section E, F). Write the critical evaluation sentences from your own results.<br/>
+3. Rewrite the three theory answers in your own words. They are a worked draft, and you must understand and own the content.<br/>
+4. Fill in your student number, URL and repository link, and check the figure numbers match.<br/>
+5. Before you push to the repository, check <b>git status</b> and make sure no connection string, key or password is in any file.</p>
+
+<h1>Where the marks are</h1>
+<p>Theory is 25 of 100. Functions, pipeline and documentation are 15 each. Testing, performance and the data layer are 10 each. If time is short, protect these: all four functions working with evidence, the load test with numbers before and after, the theory in your own words, and clear captioned screenshots. The refusal screenshots in Step 12 and Step 16 are what turns "not done" into "attempted, explained and worked around".</p>
+
+<h1>Master screenshot checklist</h1>
+<table class="grid"><tr><th>Figure</th><th>Id</th><th>What to capture</th><th>Needed?</th><th>Done</th></tr><tr><td>1</td><td>rg</td><td>Azure Portal, your resource group, Overview, showing every Agristream resource (App Service plan, Web App, Function App, storage account, SQL server and database)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>2</td><td>func-overview</td><td>Function App, Overview, showing Status Running, the default domain, the App Service plan and the Windows operating system</td><td>Yes</td><td>&#9744;</td></tr><tr><td>3</td><td>live-url</td><td>Browser showing the live home page with the full URL visible in the address bar (https://&lt;studentnumber&gt;.azurewebsites.net)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>4</td><td>appsettings-web</td><td>Web App, Settings, Environment variables, App settings tab with the NAMES visible and the values hidden (do not click Show values)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>5</td><td>appsettings-func</td><td>Function App, Settings, Environment variables, showing AzureWebJobsStorage, SqlConnectionString and FUNCTIONS_WORKER_RUNTIME names with values hidden</td><td>Yes</td><td>&#9744;</td></tr><tr><td>6</td><td>webapp-overview</td><td>Web App, Overview, showing Status Running, the default domain and the App Service plan name</td><td>Yes</td><td>&#9744;</td></tr><tr><td>7</td><td>plan-overview</td><td>App Service plan, Overview, showing Basic B1, South Africa North and both apps (Web App and Function App) in the plan</td><td>Yes</td><td>&#9744;</td></tr><tr><td>8</td><td>sql-overview</td><td>SQL database, Overview, showing the server name, status Online and the pricing tier Basic</td><td>Yes</td><td>&#9744;</td></tr><tr><td>9</td><td>sql-firewall</td><td>SQL server, Security, Networking, showing Allow Azure services and resources to access this server ticked and your client IP rule</td><td>Yes</td><td>&#9744;</td></tr><tr><td>10</td><td>sql-tables</td><td>SQL database, Query editor, after running PART 1 of create-tables.sql, with the Tables list showing dbo.Users, dbo.Devices and dbo.IrrigationCommandLog</td><td>Yes</td><td>&#9744;</td></tr><tr><td>11</td><td>register</td><td>The Register page in the live app with a username, the Farmer role and password fields filled in</td><td>Yes</td><td>&#9744;</td></tr><tr><td>12</td><td>login</td><td>The field dashboard after signing in, with the signed-in username and role shown at the top right</td><td>Yes</td><td>&#9744;</td></tr><tr><td>13</td><td>sql-users</td><td>SQL Query editor running evidence query A (users and roles), showing the hash start only</td><td>Yes</td><td>&#9744;</td></tr><tr><td>14</td><td>admin-users</td><td>The Admin Users page in the app showing the Farmer, Agronomist and Admin accounts with the role drop-down</td><td>Yes</td><td>&#9744;</td></tr><tr><td>15</td><td>storage-overview</td><td>Storage account, Overview, showing Standard performance, Locally-redundant storage (LRS) and South Africa North</td><td>Yes</td><td>&#9744;</td></tr><tr><td>16</td><td>blob-container</td><td>Storage account, Data storage, Containers, drone-images, showing the uploaded images</td><td>Yes</td><td>&#9744;</td></tr><tr><td>17</td><td>upload-page</td><td>The Drone images page after an upload, showing the success message and the image in the list with its audit status</td><td>Yes</td><td>&#9744;</td></tr><tr><td>18</td><td>table-sensor</td><td>Storage account, Storage browser, Tables, SensorReadings, showing several entities with PartitionKey, RowKey and the moisture columns</td><td>Yes</td><td>&#9744;</td></tr><tr><td>19</td><td>func-list</td><td>Function App, Overview, Functions tab, showing exactly four functions all Enabled: ProcessDroneImage, GetLatestTelemetry, QueueIrrigationCommand, ProcessIrrigationCommand</td><td>Yes</td><td>&#9744;</td></tr><tr><td>20</td><td>logstream-blob</td><td>Function App, Monitoring, Log stream (or Kudu LogFiles\Application\Functions), showing the line &#39;Drone image received&#39; and &#39;Audit entry written&#39; for the uploaded image</td><td>Yes</td><td>&#9744;</td></tr><tr><td>21</td><td>table-audit</td><td>Storage browser, Tables, ImageAudit, with one row opened or visible, showing BlobName, Status Processed, SizeBytes and DetectionLagMs</td><td>Yes</td><td>&#9744;</td></tr><tr><td>22</td><td>upload-processed</td><td>The Drone images page after refreshing, showing the same image with the green Processed badge</td><td>Yes</td><td>&#9744;</td></tr><tr><td>23</td><td>dash-telemetry</td><td>The field dashboard showing the readings table, the anomaly rows highlighted and the function round-trip time</td><td>Yes</td><td>&#9744;</td></tr><tr><td>24</td><td>get-json</td><td>Browser tab showing the GET function URL response as JSON (cover or crop out the ?code= key in the address bar)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>25</td><td>dash-trigger</td><td>The dashboard immediately after clicking Trigger irrigation, showing the green message with the command id</td><td>Yes</td><td>&#9744;</td></tr><tr><td>26</td><td>queue-message</td><td>Storage account, Queues, irrigation-commands, showing the queued message (disable the ProcessIrrigationCommand function first so the message stays visible, then re-enable it)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>27a</td><td>dash-before</td><td>The dashboard device list showing the valve with status Idle just before the command is processed</td><td>Yes</td><td>&#9744;</td></tr><tr><td>27b</td><td>dash-after</td><td>The dashboard device list after the queue function ran and the page was refreshed, showing the same valve Irrigating with the last command time</td><td>Yes</td><td>&#9744;</td></tr><tr><td>28</td><td>sql-commandlog</td><td>SQL Query editor running evidence query E (most recent commands), showing CommandId, DeviceId, Outcome, EnqueuedUtc, ProcessedUtc and LatencyMs</td><td>Yes</td><td>&#9744;</td></tr><tr><td>29</td><td>table-events</td><td>Storage browser, Tables, IrrigationEvents, showing the event row for the command</td><td>Yes</td><td>&#9744;</td></tr><tr><td>30</td><td>logstream-queue</td><td>Function App, Log stream (or Kudu logs), showing &#39;Command ... processed: start ... -&gt; Applied&#39;</td><td>Yes</td><td>&#9744;</td></tr><tr><td>31</td><td>attempt-insights</td><td>Function App or Web App, Settings, Application Insights (or Monitoring), after clicking Turn on / Create, showing the error about the resource provider or policy</td><td>Yes</td><td>&#9744;</td></tr><tr><td>32</td><td>providers</td><td>Subscriptions, your subscription, Settings, Resource providers, with the search box showing Microsoft.Insights and Microsoft.LoadTestService as NotRegistered and Microsoft.Web, Microsoft.Storage and Microsoft.Sql as Registered</td><td>Yes</td><td>&#9744;</td></tr><tr><td>33</td><td>attempt-loadtest</td><td>Portal search for Azure Load Testing, Create, showing the registration or permission error</td><td>Yes</td><td>&#9744;</td></tr><tr><td>34</td><td>sim-surge</td><td>The Simulator page after running a sensor surge, showing the result box with readings written, table transactions and milliseconds</td><td>Yes</td><td>&#9744;</td></tr><tr><td>35</td><td>sim-burst</td><td>The Simulator page after running a drone image burst, showing the uploaded count and elapsed time</td><td>Yes</td><td>&#9744;</td></tr><tr><td>36</td><td>load-baseline</td><td>PowerShell window showing the RESULTS block of the baseline run at 1 instance (users, requests/s, p50/p95/p99, errors, peak backlog, drain time, requests per instance)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>37</td><td>load-optimised</td><td>PowerShell window showing the RESULTS block of the final run at 3 instances with the tuned host.json</td><td>Yes</td><td>&#9744;</td></tr><tr><td>38</td><td>evidence-peak</td><td>The Evidence page captured during the load test showing the queue backlog, commands processed and per-minute throughput</td><td>Yes</td><td>&#9744;</td></tr><tr><td>39</td><td>metrics-cpu</td><td>App Service plan, Monitoring, Metrics, CPU Percentage and Memory Percentage charts for the load-test period (and Instance count if available)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>40</td><td>metrics-requests</td><td>Web App, Monitoring, Metrics, Requests and Response Time charts for the load-test period</td><td>Yes</td><td>&#9744;</td></tr><tr><td>41</td><td>metrics-func</td><td>Function App, Monitoring, Metrics, Function Execution Count (and Function Execution Units) for the load-test period</td><td>Yes</td><td>&#9744;</td></tr><tr><td>42</td><td>metrics-dtu</td><td>SQL database, Monitoring, Metrics, DTU percentage (or Workers percentage) for the load-test period</td><td>Yes</td><td>&#9744;</td></tr><tr><td>43</td><td>sql-throughput</td><td>SQL Query editor running evidence query G (commands processed per minute with latency)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>44</td><td>scale-blade</td><td>App Service plan, Settings, Scale out (App Service plan), showing what the Basic B1 plan offers (Manual scale only) and any prompt to upgrade for automatic or rule-based scaling</td><td>Yes</td><td>&#9744;</td></tr><tr><td>45</td><td>attempt-autoscale</td><td>Azure Monitor, Autoscale, selecting the App Service plan, showing the error or the missing option</td><td>Yes</td><td>&#9744;</td></tr><tr><td>46</td><td>attempt-scaleup</td><td>App Service plan, Scale up, selecting Standard S1 and applying, showing the RequestDisallowedByPolicy error</td><td>Optional</td><td>&#9744;</td></tr><tr><td>47</td><td>scale-3</td><td>Scale out (App Service plan) with Manual scale and the instance count set to 3, saved, with the notification</td><td>Yes</td><td>&#9744;</td></tr><tr><td>48</td><td>scale-cpu</td><td>App Service plan Metrics showing CPU Percentage split by instance (Add filter, Apply splitting, Instance) or the instance count rising from 1 to 3 across the runs</td><td>Yes</td><td>&#9744;</td></tr><tr><td>49</td><td>instance-split</td><td>PowerShell window showing the &#39;Requests per instance (X-Instance-Id)&#39; lines from a run at 3 instances</td><td>Yes</td><td>&#9744;</td></tr><tr><td>50a</td><td>hostjson-before</td><td>Visual Studio showing host.json with the baseline queue settings (batchSize 16, newBatchThreshold 8)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>50b</td><td>hostjson-after</td><td>Visual Studio showing host.json with the tuned settings (batchSize 6, newBatchThreshold 3)</td><td>Yes</td><td>&#9744;</td></tr><tr><td>51</td><td>throttle</td><td>Function App Log stream or Kudu logs (or SQL error text) showing error 10928 or &#39;request limit&#39; during the baseline run at 3 instances, if it happened</td><td>Optional</td><td>&#9744;</td></tr><tr><td>52</td><td>code-blob</td><td>Visual Studio showing ProcessDroneImageFunction.cs</td><td>Yes</td><td>&#9744;</td></tr><tr><td>53</td><td>code-get</td><td>Visual Studio showing GetLatestTelemetryFunction.cs</td><td>Yes</td><td>&#9744;</td></tr><tr><td>54</td><td>code-post</td><td>Visual Studio showing QueueIrrigationCommandFunction.cs including the IrrigationOutput class</td><td>Yes</td><td>&#9744;</td></tr><tr><td>55</td><td>code-queue</td><td>Visual Studio showing ProcessIrrigationCommandFunction.cs and the ApplyCommandAsync method in DeviceRegistry.cs</td><td>Yes</td><td>&#9744;</td></tr><tr><td>56</td><td>code-auth</td><td>Visual Studio showing Program.cs of the web project (cookie authentication and service registration) and PasswordHasher.cs</td><td>Yes</td><td>&#9744;</td></tr><tr><td>57</td><td>code-upload</td><td>Visual Studio showing ImageService.UploadAsync in ImageService.cs</td><td>Yes</td><td>&#9744;</td></tr></table>
+
+<h1>Clean up</h1>
+<p>Only after you have been marked, or when you are completely finished: delete the individual resources one at a time (Web App, Function App, App Service plan, SQL database then SQL server, storage account). Never delete the resource group. To stop cost earlier, scale the plan to 1 instance and stop both apps.</p>
+</body></html>

@@ -1,0 +1,160 @@
+﻿<html><head><meta charset="utf-8"/><title>Theory answers</title><style>
+body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; line-height: 1.25; }
+h1 { font-size: 18pt; color: #1F3864; margin-top: 20pt; }
+h2 { font-size: 14pt; color: #2F5496; margin-top: 14pt; }
+h3 { font-size: 12pt; color: #2F5496; margin-top: 10pt; }
+p.MsoCaption { font-size: 9pt; font-style: italic; color: #44546A; margin-top: 2pt; margin-bottom: 10pt; }
+p.shoty { margin-top: 8pt; margin-bottom: 0pt; }
+p.shotg { background: #E2EFDA; border: 1px solid #70AD47; padding: 6pt; margin-top: 8pt; margin-bottom: 8pt; }
+p.warn  { background: #FDE9E7; border: 1px solid #C00000; padding: 6pt; }
+p.tip   { background: #DEEAF6; border: 1px solid #2E75B6; padding: 6pt; }
+p.fix   { background: #FFF2CC; border: 1px solid #BF9000; padding: 6pt; }
+table.grid { border-collapse: collapse; width: 100%; }
+table.grid td, table.grid th { border: 1px solid #999; padding: 3pt; font-size: 9.5pt; vertical-align: top; }
+table.grid th { background: #D9E2F3; text-align: left; }
+span.fill { background: yellow; }
+pre, code { font-family: Consolas, 'Courier New', monospace; font-size: 9pt; }
+pre { background: #F2F2F2; border: 1px solid #BBB; padding: 4pt; }
+</style></head><body><h1>Theory 1: Disaster recovery and redundancy</h1>
+<p><b>Question:</b> Discuss Azure Storage redundancy options. Specifically compare locally redundant storage (LRS) with Geo-redundant storage (GRS). Explain which option would be the most appropriate for storing critical historical crop harvest records versus temporary sensor logs.</p>
+
+<p>Agristream IoT holds two very different kinds of data. Sensor logs arrive in millions of small rows and lose value within days, while historical crop harvest records are small, permanent and impossible to recreate if lost. In my build the drone images, telemetry, audit rows and the irrigation queue all live in one Azure Storage account, and a storage account has a single redundancy setting that applies to Blob, Table, Queue and File storage alike (Microsoft, 2026g). Choosing that setting is therefore a disaster-recovery decision about what the business can afford to lose.</p>
+
+<h2>Azure Storage redundancy options</h2>
+<h3>Description of service</h3>
+<p>Azure Storage always keeps multiple copies of data to protect it from hardware failures, outages and disasters. The options differ in where the copies are kept and how they are written (Microsoft, 2026g). Within the primary region there is locally redundant storage (LRS), which keeps copies in one datacenter, and zone-redundant storage (ZRS), which spreads them across three or more availability zones. Across regions there is geo-redundant storage (GRS), which adds an asynchronous copy in a paired secondary region, and geo-zone-redundant storage (GZRS), which combines ZRS in the primary region with that secondary copy. Read-access variants (RA-GRS and RA-GZRS) additionally let applications read from the secondary endpoint (Microsoft, 2026g).</p>
+
+<h2>Locally redundant storage (LRS)</h2>
+<h3>Mechanism</h3>
+<p>LRS replicates data within a single physical datacenter in the chosen region and is designed for at least eleven nines (99.999999999%) of object durability over a year (Microsoft, 2026g). It protects against drive, server and rack failures. Its weakness is concentration: if a fire, flood or other disaster hits that datacenter, every replica of the account may be lost or unavailable (Microsoft, 2026g). In the outage scenarios Microsoft lists, LRS survives a failed node but not the loss of a whole datacenter or region (Microsoft, 2026g).</p>
+<h3>Where it adds value</h3>
+<p>LRS is the lowest-cost option, and Microsoft names it as a good choice when the data can easily be reconstructed if it is lost, or when governance rules keep data inside one region (Microsoft, 2026g).</p>
+
+<h2>Geo-redundant storage (GRS)</h2>
+<h3>Mechanism</h3>
+<p>GRS first writes the data synchronously with LRS in the primary region, then copies it asynchronously to a secondary region hundreds of miles away, where it is again held with LRS. This gives at least sixteen nines of durability over a year (Microsoft, 2026g). Two consequences matter for design. First, the secondary copy is not readable unless the account is failed over, or unless it uses RA-GRS (Microsoft, 2026g). Second, because replication is asynchronous, the secondary lags the primary, so a regional failure can lose the most recent writes. The gap between the last write to the primary and the last write to the secondary is the recovery point objective (RPO), and an unplanned customer-managed failover is expected to lose data (Microsoft, 2026e; Microsoft, 2026g). This is the familiar replication-lag trade-off of asynchronous replication: the primary stays fast because it does not wait for the remote copy, at the price of a window in which a failover can lose acknowledged writes (Kleppmann, 2017).</p>
+<h3>Where it adds value</h3>
+<p>GRS survives a region-wide outage that LRS and ZRS cannot, which is why Microsoft recommends geo-replication for applications that need disaster recovery (Microsoft, 2026g). The price is higher storage cost and, after an outage, a failover step that updates the storage endpoints and leaves the data inaccessible while it runs (Microsoft, 2026g).</p>
+
+<h2>Comparing LRS with GRS</h2>
+<ul>
+<li><b>Failure covered:</b> LRS covers disk, server and rack failure only. GRS also covers the loss of an entire datacenter or region (Microsoft, 2026g).</li>
+<li><b>Durability:</b> at least 11 nines for LRS and at least 16 nines for GRS (Microsoft, 2026g).</li>
+<li><b>Cost:</b> LRS is the cheapest option. GRS stores additional copies in a second region and costs more (Microsoft, 2026g).</li>
+<li><b>Recovery behaviour:</b> LRS has nothing to fail over to. GRS needs a failover to make the secondary writable, and an unplanned failover can lose recent data because replication is asynchronous (Microsoft, 2026e).</li>
+<li><b>What neither protects against:</b> every replica reflects the same current state, so a deletion or an overwrite is applied to all copies at once. Redundancy protects against hardware failure, not against data-modifying operations (Microsoft, 2026g).</li>
+</ul>
+
+<h2>Critical historical crop harvest records: GRS (or RA-GRS)</h2>
+<p>Harvest records are the long-term business asset of the platform. They support yield analysis, insurance claims and agronomic planning, they are written once and kept for years, and, unlike sensor readings, they cannot be recreated by the devices if they are lost. The cost of losing them is far higher than the extra storage cost of geo-replication, so GRS is the most appropriate choice. The asynchronous RPO is acceptable here because records are added slowly and are normally not changing at the moment of a disaster, so the window of unreplicated writes is small. If the dashboards must keep reading the history during a regional outage, RA-GRS adds a readable secondary endpoint, and GZRS or RA-GZRS would also remove the risk of losing a single datacenter inside the primary region (Microsoft, 2026g). Because replication also copies mistakes, these records still need soft delete or versioning and exports as a defence against accidental deletion, which redundancy alone does not give (Microsoft, 2026g).</p>
+
+<h2>Temporary sensor logs: LRS</h2>
+<p>Raw sensor readings arrive in huge volumes, are mostly useful for a short rolling window, and are continually replaced by new readings. If a datacenter were lost, the platform would lose only the most recent readings, the devices would keep reporting, and ingestion could resume in a healthy region. This is exactly the "data that can easily be reconstructed" case for which Microsoft names LRS as a good choice (Microsoft, 2026g). Paying to replicate millions of short-lived rows to a second region would add cost without protecting anything that the business cannot afford to lose.</p>
+
+<h2>How this applies to my Agristream build</h2>
+<p>My deployment uses one Standard storage account with LRS for everything, because the account's redundancy setting is shared by all of its services and my student subscription has no business case for geo-replication (Microsoft, 2026g). In production I would split the data across two storage accounts, which Microsoft recommends when resources have different redundancy requirements (Microsoft, 2026g). One GRS or RA-GRS account would hold the harvest records and archived imagery, and one LRS account would hold the telemetry table, the image audit table and the irrigation queue. The queue and audit rows are also transient: an irrigation command that is lost in a disaster is simply requested again, and my queue processing is idempotent because the command identifier is the primary key of the SQL command log, so a repeated message is detected and ignored.</p>
+
+<h2>Using the Two Options Together</h2>
+<p>The two options are not rivals but tools for different values of data. LRS keeps cost low where loss is cheap, and GRS spends money where loss is expensive. Separating the accounts lets Agristream apply each setting to the data that deserves it, and pairing GRS with versioning or soft delete covers both regional disasters and human error.</p>
+
+
+<h1>Theory 2: Stateless vs Stateful architecture</h1>
+<p><b>Question:</b> Explain why it is critical to keep Azure App Services and Azure Functions stateless when designing applications for horizontal scaling. Discuss how storing session data or files locally on a web server instance negatively affects scale out behaviour.</p>
+
+<p>The brief asks for a system that survives peak daylight surges, and the practical way to absorb a surge on Azure App Service is horizontal scaling: running the same app on more instances behind a load balancer. In my build the Web App and the Function App share one Basic B1 plan that I scale manually from one to three instances during the load test. That only works if every instance can serve every request, which is the property that statelessness gives.</p>
+
+<h2>Stateless and stateful applications</h2>
+<h3>Description</h3>
+<p>A stateful component keeps data that later requests depend on in the memory or on the local disk of one particular server. A stateless component keeps no such data between requests. Anything that must persist lives in an external backing service such as a database, storage account or cache. The Twelve-Factor methodology states the rule directly: processes are stateless and share nothing, and the app never assumes that anything cached in memory or on disk will be available on a future request, because that request will probably be served by a different process (Wiggins, 2017). Microsoft gives the same advice for scalable Azure designs: avoid dependencies on a specific instance, do not assume that requests from the same source reach the same instance, and design services to be stateless where possible (Microsoft, 2026b). For Azure Functions the guidance is to write functions to be stateless (Microsoft, 2026c).</p>
+
+<h2>Why statelessness is critical for horizontal scaling</h2>
+<h3>Mechanism</h3>
+<p>When a plan scales out, new instances start with empty memory and an empty local disk, and the load balancer spreads requests across all instances. When it scales in, instances are removed and whatever they held disappears. Even without scaling, hosted instances are expected to restart or move occasionally (Microsoft, 2026c). If requests depend on local state, three things go wrong. Requests that land on an instance without the state fail or behave differently. New instances add capacity but cannot take over existing users, so the extra capacity is wasted. And scale-in or a restart destroys state that users thought was safe. A stateless instance has none of these problems because it is interchangeable: adding an instance adds capacity immediately, and removing one loses nothing.</p>
+<h3>Statelessness for Azure Functions</h3>
+<p>The same reasoning applies to the queue-triggered function. Several instances can read the same queue as competing consumers, and no instance can assume which messages it will get (Hohpe and Woolf, 2004; Microsoft, 2026b). Queue delivery is at least once, so the function must also be idempotent, meaning a repeated message must not repeat its side effects (Microsoft, 2026b). My <i>ProcessIrrigationCommand</i> function holds no state of its own and writes to SQL with the command identifier as the primary key, so a redelivered message is rejected as a duplicate.</p>
+
+<h2>How locally stored session data hurts scale-out</h2>
+<h3>Mechanism</h3>
+<p>In-memory session state is the classic example. If a user signs in on instance A and the session lives in A's memory, a later request routed to instance B finds no session, and the user appears to be signed out. The usual workaround is a "sticky session", which keeps routing the user to the same instance. The Twelve-Factor guidance calls sticky sessions a violation that should never be relied upon, and recommends keeping session data in a datastore with time-expiry such as Redis or Memcached (Wiggins, 2017). Sticky routing also undermines the purpose of scaling: it makes load uneven, and newly added instances receive only new users.</p>
+<h3>The ASP.NET Core data-protection example</h3>
+<p>Even apps that avoid explicit session state can depend on local state without noticing. ASP.NET Core protects authentication cookies, TempData and anti-forgery tokens with Data Protection keys, and by default each node has its own key ring, so a cookie encrypted on one node cannot be decrypted by another and sign-in fails intermittently (Microsoft, 2026j). On Azure App Service the platform persists the keys to the shared <code>%HOME%\ASP.NET\DataProtection-Keys</code> folder, which is synchronised across all instances of the app in a deployment slot, so one key ring serves every instance (Microsoft, 2026f). My app uses cookie authentication, and this shared key ring is why a user who signs in on one instance stays signed in when the load balancer sends the next request to another.</p>
+
+<h2>How locally stored files hurt scale-out</h2>
+<h3>Mechanism</h3>
+<p>App Service has two kinds of file storage with very different behaviour across instances. The <code>%HOME%</code> content share is shared by all instances and persists across restarts, whereas the temporary local storage under <code>%SystemDrive%\local</code> is not shared between instances and is not persistent across restarts (Microsoft, 2026k). A file saved to local temporary storage on instance A therefore does not exist on instance B, so a user who uploads an image and then reloads the page may or may not see it depending on which instance answers. The shared <code>%HOME%</code> share avoids that particular problem, but it is a network share whose size is limited by the pricing tier and which every instance shares, so it is a poor place for large and growing volumes of drone imagery (Microsoft, 2026k). The scalable answer is to put files in a dedicated storage service.</p>
+<h3>How my build applies it</h3>
+<p>The drone-image upload streams the file straight from the request to Azure Blob Storage and writes nothing to the instance's disk. The blob-triggered function then reads the image from Blob Storage, so it does not matter which web instance accepted the upload or which function instance processes it.</p>
+
+<h2>Where state lives in Agristream</h2>
+<ul>
+<li><b>Users, roles and device status:</b> Azure SQL Database.</li>
+<li><b>Telemetry, image audit rows and irrigation events:</b> Azure Table storage.</li>
+<li><b>Drone images:</b> Azure Blob storage.</li>
+<li><b>Pending irrigation commands:</b> an Azure Storage queue.</li>
+<li><b>Sign-in state:</b> an encrypted cookie, with the key ring on the shared <code>%HOME%</code> folder.</li>
+</ul>
+<p>Every response from the web app also carries an <code>X-Instance-Id</code> header, and the load-test script counts the responses per instance, which gives measurable evidence that requests were served by several interchangeable instances during scale-out.</p>
+
+<h2>Statelessness and Scale-out Together</h2>
+<p>Statelessness is what makes extra instances useful, but it moves the pressure to the shared services. Microsoft warns that a database or other downstream service can limit throughput even when more compute instances are available, so the bottleneck must be identified before adding compute (Microsoft, 2026b). That applies directly to my build: the Basic SQL tier allows at most 30 concurrent workers (Microsoft, 2026i), so scaling stateless compute to three instances without tuning the queue function could overwhelm the database. Keeping the web tier and function tier stateless gives me the freedom to scale them, and measuring the shared services tells me when to stop. The same property is what lets a rule such as "add an instance when average CPU stays above 70%" work at all, because autoscale adds and removes identical instances according to a metric (Microsoft, 2026a).</p>
+
+
+<h1>Theory 3: Serverless Triggers and Bindings</h1>
+<p><b>Question:</b> Using a table, compare Azure Functions triggers and input/output bindings. Include the following columns: Definition, Purpose, and an example of how each was used in your Agristream pipeline.</p>
+
+<p>The Agristream pipeline has exactly four functions, and each one is defined by a trigger that makes it run and, in some cases, by bindings that move data in and out. The table compares the three concepts, followed by a discussion of when I used each and when I chose not to.</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">
+<tr style="background:#d9ead3"><th></th><th>Definition</th><th>Purpose</th><th>Example in my Agristream pipeline</th></tr>
+<tr>
+<td><b>Trigger</b></td>
+<td>Defines how a function is invoked. A function has exactly one trigger, and the trigger can also pass data into the function (Microsoft, 2026l).</td>
+<td>To start the function in response to an event, such as a blob appearing, an HTTP request or a queue message, without any polling code of my own.</td>
+<td>All four functions: <i>ProcessDroneImage</i> (blob trigger on the drone-images container), <i>GetLatestTelemetry</i> (HTTP GET), <i>QueueIrrigationCommand</i> (HTTP POST) and <i>ProcessIrrigationCommand</i> (queue trigger on irrigation-commands).</td>
+</tr>
+<tr>
+<td><b>Input binding</b></td>
+<td>A declarative connection to another resource that passes data into the function through a parameter. The trigger is itself a special type of input binding (Microsoft, 2026l).</td>
+<td>To give the function the data it needs without hard-coding access to the service, so connection details stay in configuration.</td>
+<td>The blob trigger binds the uploaded image to a <i>BlobClient</i> parameter, which the function uses to read the size, content type and metadata. The route value <i>{fieldId}</i> and the blob <i>{name}</i> are bound the same way.</td>
+</tr>
+<tr>
+<td><b>Output binding</b></td>
+<td>A declarative connection that lets the function write data out to another resource, through a return value or an output property (Microsoft, 2026l).</td>
+<td>To send results to a service without writing client code, including creating the queue message in the correct encoding.</td>
+<td><i>QueueIrrigationCommand</i> returns one object holding a <i>[QueueOutput]</i> message for the irrigation-commands queue and an <i>[HttpResult]</i> response, so a single invocation answers the browser and queues the command.</td>
+</tr>
+</table>
+
+<h2>Triggers compared with bindings</h2>
+<h3>Description of the differences</h3>
+<p>A trigger answers "what starts this function", and a function must have exactly one. Bindings answer "what data comes in and what goes out", they are optional, and a function can have several input and output bindings in any mix (Microsoft, 2026l). Because a trigger is a special input binding, it is the only one that causes execution. Both are declared with attributes on the method and its parameters in C#, and the connection is named by an app setting rather than written in code. In my functions the <i>Connection = "AzureWebJobsStorage"</i> setting is the only link to the storage account, which keeps secrets out of the source code.</p>
+
+<h3>How bindings add value to the pipeline</h3>
+<p>The output binding on <i>QueueIrrigationCommand</i> removes the code to create a queue client, serialise the message and encode it. The queue extension uses Base64 message encoding by default (Microsoft, 2026d), and the binding handles that for me, which avoids the encoding mismatch that otherwise makes a queue trigger fail on messages written by other code. The trigger on <i>ProcessIrrigationCommand</i> removes the polling loop, the visibility-timeout handling and the retry logic: a message is tried up to five times and then moved to a poison queue (Microsoft, 2026d).</p>
+
+<h3>When I used the SDK instead of a binding</h3>
+<p>Microsoft is explicit that bindings are optional and that a function can always create an Azure SDK client and use it directly (Microsoft, 2026l). I used the Table SDK directly, through a cached client factory, for the audit, telemetry and event tables. The telemetry function must query one partition at a time, page through results and stop after a limit, which a simple table binding does not give me. The partition design matters because a Table storage partition is served from one server with a scalability target of 2,000 entities per second (Microsoft, 2026h), so my keys use one partition per field per day. The trade-off is more code in exchange for control, whereas the blob trigger, the HTTP triggers and the queue output binding remove boilerplate without taking away any control I needed.</p>
+
+<h3>Triggers, bindings and scale</h3>
+<p>The trigger also decides how the function scales and needs tuning. For the queue trigger, <i>batchSize</i> (default 16) and <i>newBatchThreshold</i> (default 8 on a one-vCPU instance) set how many messages one instance processes at once, so the maximum concurrency per function per instance is their sum, 24 by default (Microsoft, 2026d). On three instances that is 72 concurrent database calls, more than the 30 concurrent workers the Basic SQL tier allows (Microsoft, 2026i). I therefore reduced the settings to a batch size of 6 and a threshold of 3, which gives 9 per instance and 27 across three instances, and recorded the before-and-after results in the load-test section. The queue itself acts as a buffer between the fast HTTP producer and the slower, throttled consumer, which is the Message Channel and Competing Consumers pattern described by Hohpe and Woolf (2004).</p>
+
+<h2>Triggers and Bindings Together</h2>
+<p>In Agristream the triggers decide when work happens, the bindings decide how data moves with the least code, and the SDK fills the gaps where I need control. Using the right mix is what keeps the four functions small, configurable and safe to scale.</p>
+<h1>Reference List</h1>
+<p style="margin-left:36pt;text-indent:-36pt">Hohpe, G. and Woolf, B. 2004. <i>Enterprise Integration Patterns: Designing, Building, and Deploying Messaging Solutions</i>. Boston, MA: Addison-Wesley.</p>
+<p style="margin-left:36pt;text-indent:-36pt">Kleppmann, M. 2017. <i>Designing Data-Intensive Applications: The Big Ideas Behind Reliable, Scalable and Maintainable Systems</i>. Sebastopol, CA: O'Reilly Media.</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026a. <i>Autoscale in Azure Monitor</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/azure-monitor/autoscale/autoscale-overview [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026b. <i>Autoscaling Guidance</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/architecture/best-practices/auto-scaling [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026c. <i>Azure Functions best practices</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/azure-functions/functions-best-practices [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026d. <i>Azure Queue storage trigger and bindings for Azure Functions overview</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-queue [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026e. <i>Azure storage disaster recovery planning and failover</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/storage/common/storage-disaster-recovery-guidance [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026f. <i>Data Protection key management and lifetime in ASP.NET Core</i>. [Online]. Available at: https://learn.microsoft.com/en-us/aspnet/core/security/data-protection/configuration/default-settings [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026g. <i>Data redundancy</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/storage/common/storage-redundancy [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026h. <i>Design a scalable partitioning strategy for Azure Table storage</i>. [Online]. Available at: https://learn.microsoft.com/en-us/rest/api/storageservices/designing-a-scalable-partitioning-strategy-for-azure-table-storage [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026i. <i>DTU resource limits single databases</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/azure-sql/database/resource-limits-dtu-single-databases [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026j. <i>Host ASP.NET Core in a web farm</i>. [Online]. Available at: https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/web-farm [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026k. <i>Operating System Functionality in Azure App Service</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/app-service/operating-system-functionality [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Microsoft. 2026l. <i>Triggers and Bindings in Azure Functions</i>. [Online]. Available at: https://learn.microsoft.com/en-us/azure/azure-functions/functions-triggers-bindings [Accessed 6 November 2026].</p>
+<p style="margin-left:36pt;text-indent:-36pt">Wiggins, A. 2017. <i>The Twelve-Factor App: VI. Processes</i>. [Online]. Available at: https://12factor.net/processes [Accessed 6 November 2026].</p>
+</body></html>

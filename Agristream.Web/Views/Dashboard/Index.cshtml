@@ -1,0 +1,112 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Field dashboard";
+    var telemetry = Model.Telemetry;
+}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Field dashboard: @Model.FieldId</h1>
+    <form method="get" class="d-flex gap-2">
+        <select name="fieldId" class="form-select form-select-sm" onchange="this.form.submit()">
+            @foreach (var field in Model.Fields)
+            {
+                <option value="@field" selected="@(field == Model.FieldId)">@field</option>
+            }
+        </select>
+        <a class="btn btn-sm btn-outline-secondary" asp-action="Index" asp-route-fieldId="@Model.FieldId">Refresh</a>
+    </form>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Readings returned</div>
+        <div class="metric">@(telemetry?.Data?.Count ?? 0)</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Anomalies (low moisture)</div>
+        <div class="metric">@(telemetry?.Data?.Anomalies ?? 0)</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Function round trip</div>
+        <div class="metric">@(telemetry?.RoundTripMs ?? 0) ms</div>
+        <div class="small text-muted">table query: @(telemetry?.Data?.ServerElapsedMs ?? 0) ms</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Served by instance</div>
+        <div class="metric">@Model.InstanceId</div>
+    </div></div></div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">Latest telemetry (HTTP GET function reading Azure Table storage)</div>
+    <div class="card-body p-0">
+        @if (telemetry?.Error is not null)
+        {
+            <div class="alert alert-warning m-3">@telemetry.Error</div>
+        }
+        else if (telemetry?.Data is { Readings.Count: > 0 })
+        {
+            <table class="table table-sm table-hover mb-0">
+                <thead><tr>
+                    <th>Time (UTC)</th><th>Sensor</th><th>Soil moisture %</th><th>Soil temp C</th><th>pH</th><th>Battery %</th><th>Status</th>
+                </tr></thead>
+                <tbody>
+                @foreach (var r in telemetry.Data.Readings)
+                {
+                    <tr class="@(r.IsAnomaly ? "anomaly" : "")">
+                        <td>@r.ReadingUtc.UtcDateTime.ToString("HH:mm:ss")</td>
+                        <td>@r.SensorId</td>
+                        <td>@r.SoilMoisturePct</td>
+                        <td>@r.SoilTempC</td>
+                        <td>@r.Ph</td>
+                        <td>@r.BatteryPct</td>
+                        <td>@(r.IsAnomaly ? "Dry: irrigation advised" : "OK")</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="m-3 text-muted">No telemetry for this field yet. An Admin can generate readings on the Simulator page.</p>
+        }
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Devices (master registry in Azure SQL)</div>
+    <div class="card-body p-0">
+        @if (Model.DeviceError is not null)
+        {
+            <div class="alert alert-warning m-3">@Model.DeviceError</div>
+        }
+        else
+        {
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Device</th><th>Type</th><th>Status</th><th>Last command (UTC)</th><th></th></tr></thead>
+                <tbody>
+                @foreach (var d in Model.Devices)
+                {
+                    <tr>
+                        <td>@d.DeviceId <span class="text-muted small">@d.Name</span></td>
+                        <td>@d.DeviceType</td>
+                        <td><span class="badge @(d.Status == "Irrigating" ? "bg-primary" : "bg-secondary")">@d.Status</span></td>
+                        <td>@(d.LastCommandUtc?.ToString("yyyy-MM-dd HH:mm:ss") ?? "none")</td>
+                        <td class="text-end">
+                            @if (Model.CanTriggerIrrigation && d.DeviceType == "Valve")
+                            {
+                                <form asp-action="TriggerIrrigation" method="post" class="d-inline">
+                                    <input type="hidden" name="deviceId" value="@d.DeviceId" />
+                                    <input type="hidden" name="fieldId" value="@d.FieldId" />
+                                    <input type="hidden" name="durationMinutes" value="30" />
+                                    <button name="action" value="start" class="btn btn-sm btn-success">Trigger irrigation</button>
+                                    <button name="action" value="stop" class="btn btn-sm btn-outline-secondary">Stop</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>

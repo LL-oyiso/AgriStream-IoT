@@ -1,0 +1,7 @@
+html { font-size: 15px; position: relative; min-height: 100%; }
+body { margin-bottom: 60px; background: #f6f8f4; }
+.agri-nav { background: #2f6b3a; }
+.footer { position: absolute; bottom: 0; width: 100%; line-height: 50px; background: #fff; }
+.metric { font-size: 1.8rem; font-weight: 600; }
+.anomaly { background: #fff3cd; }
+table.table-sm td, table.table-sm th { vertical-align: middle; }

@@ -1,0 +1,7 @@
+<Project>
+  <!-- Shorten build paths: the OneDrive path makes default bin/obj output exceed Windows MAX_PATH (260). -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(LOCALAPPDATA)\Agristream_Build\Web\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(LOCALAPPDATA)\Agristream_Build\Web\bin\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

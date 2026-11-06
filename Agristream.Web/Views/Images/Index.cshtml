@@ -1,0 +1,61 @@
+@model ImagesViewModel
+@{
+    ViewData["Title"] = "Drone images";
+}
+<h1 class="h4 mb-3">Drone images</h1>
+
+<div class="card mb-4">
+    <div class="card-header">Upload a drone image (stored in Azure Blob storage)</div>
+    <div class="card-body">
+        <form asp-action="Upload" method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">Field</label>
+                <select name="fieldId" class="form-select">
+                    @foreach (var field in Model.Fields)
+                    {
+                        <option value="@field">@field</option>
+                    }
+                </select>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">Image (JPEG, PNG, TIFF or WebP, up to 30 MB)</label>
+                <input type="file" name="file" accept="image/*" class="form-control" required />
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-success">Upload</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+@if (Model.Error is not null)
+{
+    <div class="alert alert-warning">@Model.Error</div>
+}
+
+<div class="card">
+    <div class="card-header">Latest images and their processing status (audit written by the blob-triggered function)</div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+            <thead><tr><th>Preview</th><th>Blob name</th><th>Field</th><th>Uploaded by</th><th>Size</th><th>Uploaded (UTC)</th><th>Audit</th></tr></thead>
+            <tbody>
+            @foreach (var image in Model.Images)
+            {
+                <tr>
+                    <td><img src="@Url.Action("Photo", "Images", new { name = image.Name })" alt="" style="height:36px; max-width:60px; object-fit:cover" /></td>
+                    <td class="small">@image.Name</td>
+                    <td>@image.FieldId</td>
+                    <td>@image.UploadedBy</td>
+                    <td>@(image.SizeBytes / 1024) KB</td>
+                    <td>@image.UploadedUtc.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td><span class="badge @(image.AuditStatus == "Processed" ? "bg-success" : "bg-warning text-dark")">@image.AuditStatus</span></td>
+                </tr>
+            }
+            @if (Model.Images.Count == 0 && Model.Error is null)
+            {
+                <tr><td colspan="7" class="text-muted p-3">No images uploaded yet.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>

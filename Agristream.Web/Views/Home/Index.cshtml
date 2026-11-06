@@ -1,0 +1,40 @@
+@{
+    ViewData["Title"] = "Home";
+}
+<div class="p-4 mb-4 bg-white border rounded">
+    <h1 class="h3">Agristream IoT management portal</h1>
+    <p class="mb-2">
+        Real-time monitoring for large commercial farms: soil-sensor telemetry, drone imagery and
+        irrigation control, processed by a serverless pipeline on Azure.
+    </p>
+    @if (User.Identity?.IsAuthenticated == true)
+    {
+        <a class="btn btn-success" asp-controller="Dashboard" asp-action="Index">Open field dashboard</a>
+    }
+    else
+    {
+        <a class="btn btn-success me-2" asp-controller="Account" asp-action="Login">Sign in</a>
+        <a class="btn btn-outline-success" asp-controller="Account" asp-action="Register">Register</a>
+    }
+</div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <h2 class="h6">Farmer</h2>
+            <p class="small mb-0">Views field telemetry, uploads drone images and triggers irrigation.</p>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <h2 class="h6">Agronomist</h2>
+            <p class="small mb-0">Views field telemetry and uploads drone images for analysis.</p>
+        </div></div>
+    </div>
+    <div class="col-md-4">
+        <div class="card h-100"><div class="card-body">
+            <h2 class="h6">Admin</h2>
+            <p class="small mb-0">Manages user roles, runs the traffic simulator and reads the evidence dashboard.</p>
+        </div></div>
+    </div>
+</div>

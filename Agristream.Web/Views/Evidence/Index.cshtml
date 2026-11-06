@@ -1,0 +1,109 @@
+@model EvidenceViewModel
+@{
+    ViewData["Title"] = "Evidence";
+}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Evidence dashboard</h1>
+    <div>
+        <span class="text-muted small me-2">Generated @Model.GeneratedUtc.UtcDateTime.ToString("HH:mm:ss") UTC by instance @Model.InstanceId</span>
+        <a class="btn btn-sm btn-outline-secondary" asp-action="Index">Refresh</a>
+    </div>
+</div>
+
+@foreach (var error in Model.Errors)
+{
+    <div class="alert alert-warning py-2">@error</div>
+}
+
+<div class="row g-3 mb-3">
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Queue backlog (irrigation-commands)</div>
+        <div class="metric">@(Model.QueueBacklog?.ToString() ?? "n/a")</div>
+        <div class="small text-muted">poison messages: @(Model.PoisonMessages?.ToString() ?? "n/a")</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Commands processed (SQL)</div>
+        <div class="metric">@(Model.Commands?.Total ?? 0)</div>
+        <div class="small text-muted">last 5 min: @(Model.Commands?.LastFiveMinutes ?? 0)</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Queue latency (avg / max)</div>
+        <div class="metric">@((Model.Commands?.AvgLatencyMs ?? 0).ToString("N0")) ms</div>
+        <div class="small text-muted">max @(Model.Commands?.MaxLatencyMs ?? 0) ms</div>
+    </div></div></div>
+    <div class="col-md-3"><div class="card"><div class="card-body">
+        <div class="text-muted small">Drone images in Blob storage</div>
+        <div class="metric">@(Model.BlobCount?.ToString() ?? "n/a")@(Model.BlobCountCapped ? "+" : "")</div>
+        <div class="small text-muted">avg audit lag @((Model.AvgAuditLagMs ?? 0).ToString("N0")) ms</div>
+    </div></div></div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">Sensor readings stored today (Table: SensorReadings)</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Field</th><th>Readings</th></tr></thead>
+                    <tbody>
+                    @foreach (var f in Model.ReadingsByField)
+                    {
+                        <tr><td>@f.FieldId</td><td>@f.Readings@(f.Capped ? "+" : "")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card mb-3">
+            <div class="card-header">Recent image audit rows (Table: ImageAudit)</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Blob</th><th>Status</th><th>Lag</th><th>Processed (UTC)</th></tr></thead>
+                    <tbody>
+                    @foreach (var a in Model.RecentAudits)
+                    {
+                        <tr><td class="small">@a.BlobName</td><td>@a.Status</td><td>@a.DetectionLagMs ms</td><td>@a.ProcessedUtc.UtcDateTime.ToString("HH:mm:ss")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">Users per role and devices per status (Azure SQL)</div>
+            <div class="card-body">
+                <div>@foreach (var r in Model.UsersByRole) { <span class="badge bg-secondary me-1">@r.Role: @r.Users</span> }</div>
+                <div class="mt-2">@foreach (var s in Model.DevicesByStatus) { <span class="badge bg-primary me-1">@s.Status: @s.Devices</span> }</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">Throughput per minute (SQL: IrrigationCommandLog)</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Minute (UTC)</th><th>Commands</th><th>Avg ms</th><th>Max ms</th></tr></thead>
+                    <tbody>
+                    @foreach (var m in Model.PerMinute)
+                    {
+                        <tr><td>@m.MinuteUtc.ToString("HH:mm")</td><td>@m.Commands</td><td>@m.AvgLatencyMs.ToString("N0")</td><td>@m.MaxLatencyMs</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">Recent commands</div>
+            <div class="card-body p-0">
+                <table class="table table-sm mb-0">
+                    <thead><tr><th>Device</th><th>Action</th><th>By</th><th>Outcome</th><th>Latency</th><th>Processed (UTC)</th></tr></thead>
+                    <tbody>
+                    @foreach (var c in Model.RecentCommands)
+                    {
+                        <tr><td>@c.DeviceId</td><td>@c.Action</td><td>@c.RequestedBy</td><td>@c.Outcome</td><td>@c.LatencyMs ms</td><td>@c.ProcessedUtc.ToString("HH:mm:ss")</td></tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
