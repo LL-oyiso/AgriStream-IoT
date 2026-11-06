@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Agristream.Functions/Agristream.Functions.csproj" />
+  <Project Path="Agristream.Web/Agristream.Web.csproj" />
+</Solution>

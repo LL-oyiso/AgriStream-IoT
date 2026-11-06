@@ -1,0 +1,7 @@
+<Project>
+  <!-- Shorten build paths: the OneDrive path plus Functions .azurefunctions\runtimes output exceeds Windows MAX_PATH (260). -->
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(LOCALAPPDATA)\Agristream_Build\Functions\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(LOCALAPPDATA)\Agristream_Build\Functions\bin\</BaseOutputPath>
+  </PropertyGroup>
+</Project>

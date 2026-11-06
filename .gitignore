@@ -1,0 +1,29 @@
+## .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+## Secrets and local settings
+local.settings.json
+appsettings.Development.json
+appsettings.*.local.json
+secrets.json
+
+## Visual Studio publish profiles and Azure service dependency files (contain subscription and resource details)
+**/Properties/PublishProfiles/
+**/Properties/ServiceDependencies/
+**/Properties/serviceDependencies*.json
+**/Properties/serviceDependencies*.json.user
+
+## Publish artifacts
+*.zip
+publish/
+
+## Office temp files
+~$*
+
+## OS
+Thumbs.db
+Desktop.ini
